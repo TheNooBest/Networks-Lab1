@@ -41,9 +41,12 @@ struct ui_element
 		olc::vi2d mousePos = pge->GetMousePos();
 		return mousePos.x >= x && mousePos.x <= x + w && mousePos.y >= y && mousePos.y <= y + h;
 	}
+	// Must be overrided
 	void virtual Render(olc::PixelGameEngine* pge) = 0;
+	// You might or not to override
 	void virtual OnClick(olc::PixelGameEngine* pge) {};
 	void virtual OnMouseWheel(olc::PixelGameEngine* pge) {};
+	void virtual Render(olc::PixelGameEngine* pge, int x, int y) {};
 
 	virtual ~ui_element() = default;
 };
@@ -118,11 +121,12 @@ struct scrollbar : public ui_element
 	int current = 0;
 	int bottom = 0;
 	int top = 0;
+	bool bReversed = false;
 
 	scrollbar() :
 		ui_element() {}
-	scrollbar(int _x, int _y, int _w, int _h, int _max = 100, int _current = 0, int _min = 0, bool _bActive = true, olc::Pixel _mainColor = olc::WHITE, olc::Pixel _mouseOnColor = olc::YELLOW, olc::Pixel _activeColor = olc::BLUE) :
-		ui_element(_x, _y, _w, _h, _bActive, _mainColor, _mouseOnColor, _activeColor), bottom(_min), top(_max), current(_current) {}
+	scrollbar(int _x, int _y, int _w, int _h, int _max = 100, int _current = 0, int _min = 0, bool _bReversed = false, bool _bActive = true, olc::Pixel _mainColor = olc::WHITE, olc::Pixel _mouseOnColor = olc::YELLOW, olc::Pixel _activeColor = olc::BLUE) :
+		ui_element(_x, _y, _w, _h, _bActive, _mainColor, _mouseOnColor, _activeColor), bottom(_min), top(_max), current(_current), bReversed(_bReversed) {}
 
 	void virtual Increase() {
 		current = min(current + 1, top);
@@ -138,21 +142,21 @@ struct scrollbar_v : public scrollbar
 
 	scrollbar_v() :
 		scrollbar(), drawY(0) {}
-	scrollbar_v(int _x, int _y, int _w, int _h, int _max = 100, int _current = 0, int _min = 0) :
-		scrollbar(_x, _y, _w, _h, _max, _current, _min) {
-		int maxH = h - w + 1;
-		drawY = y + (maxH * (current - bottom)) / (top - bottom);
+	scrollbar_v(int _x, int _y, int _w, int _h, int _max = 100, int _current = 0, int _min = 0, bool _bReversed = false, bool _bActive = true) :
+		scrollbar(_x, _y, _w, _h, _max, _current, _min, _bReversed, _bActive), drawY(_y) {
+		if (top <= bottom) return;
+		drawY = y + (h - w) * (current - bottom) / (top - bottom);
 	}
 
 	void Increase() override {
-		scrollbar::Increase();
-		int maxH = h - w + 1;
-		drawY = y + (maxH * (current - bottom)) / (top - bottom);
+		if (top <= bottom) return;
+		bReversed ? scrollbar::Decrease() : scrollbar::Increase();
+		drawY = y + (h - w) * (current - bottom) / (top - bottom);
 	}
 	void Decrease() override {
-		scrollbar::Decrease();
-		int maxH = h - w + 1;
-		drawY = y + (maxH * (current - bottom)) / (top - bottom);
+		if (top <= bottom) return;
+		bReversed ? scrollbar::Increase() : scrollbar::Decrease();
+		drawY = y + (h - w) * (current - bottom) / (top - bottom);
 	}
 	void Render(olc::PixelGameEngine* pge) override {
 		pge->FillRect(x, y, w, h, olc::GREY);
@@ -166,21 +170,21 @@ struct scrollbar_h : public scrollbar
 
 	scrollbar_h() :
 		scrollbar(), drawX(0) {}
-	scrollbar_h(int _x, int _y, int _w, int _h, int _max = 100, int _current = 0, int _min = 0) :
-		scrollbar(_x, _y, _w, _h, _max, _current, _min) {
-		int maxW = h - w + 1;
+	scrollbar_h(int _x, int _y, int _w, int _h, int _max = 100, int _current = 0, int _min = 0, bool _bReversed = false, bool _bActive = true) :
+		scrollbar(_x, _y, _w, _h, _max, _current, _min, _bReversed, _bActive), drawX(_x) {
+		int maxW = h - w;
 		drawX = x + (maxW * (current - bottom)) / (top - bottom);
 	}
 
 	void Increase() override {
-		scrollbar::Increase();
-		int maxW = h - w + 1;
-		drawX = x + (maxW * (current - bottom)) / (top - bottom);
+		if (top <= bottom) return;
+		bReversed ? scrollbar::Decrease() : scrollbar::Increase();
+		drawX = x + (w - h) * (current - bottom) / (top - bottom);
 	}
 	void Decrease() override {
-		scrollbar::Decrease();
-		int maxW = h - w + 1;
-		drawX = x + (maxW * (current - bottom)) / (top - bottom);
+		if (top <= bottom) return;
+		bReversed ? scrollbar::Increase() : scrollbar::Decrease();
+		drawX = x + (w - h) * (current - bottom) / (top - bottom);
 	}
 	void Render(olc::PixelGameEngine* pge) override {
 		pge->FillRect(x, y, w, h, olc::GREY);
@@ -194,8 +198,8 @@ struct scrollable : public ui_element
 
 	scrollable() :
 		ui_element(), frame() {}
-	scrollable(int _x, int _y, int _w, int _h, bool _bActive = true, olc::Pixel _mainColor = olc::WHITE, olc::Pixel _mouseOnColor = olc::YELLOW, olc::Pixel _activeColor = olc::BLUE) :
-		ui_element(_x, _y, _w, _h, _bActive, _mainColor, _mouseOnColor, _activeColor), frame(_w, _h) {}
+	scrollable(int _x, int _y, int _w, int _h, int _frame_w, int _frame_h, bool _bActive = true, olc::Pixel _mainColor = olc::WHITE, olc::Pixel _mouseOnColor = olc::YELLOW, olc::Pixel _activeColor = olc::BLUE) :
+		ui_element(_x, _y, _w, _h, _bActive, _mainColor, _mouseOnColor, _activeColor), frame(_frame_w, _frame_h) {}
 };
 
 struct scrollable_v : public scrollable
@@ -216,7 +220,7 @@ struct scrollable_vh : public scrollable
 	scrollable_vh() :
 		scrollable(), scroll_h(), scroll_v() {}
 	scrollable_vh(int _x, int _y, int _w, int _h, bool _bActive = true, olc::Pixel _mainColor = olc::WHITE, olc::Pixel _mouseOnColor = olc::YELLOW, olc::Pixel _activeColor = olc::BLUE) :
-		scrollable(_x, _y, _w, _h, _bActive, _mainColor, _mouseOnColor, _activeColor), scroll_h(_x, _y + _h - 10, _w - 10, 10), scroll_v(_x + _w - 10, _y, 10, _h - 10) {}
+		scrollable(_x, _y, _w, _h, _w - 10, _h - 10, _bActive, _mainColor, _mouseOnColor, _activeColor), scroll_h(_x, _y + _h - 10, _w - 10, 10), scroll_v(_x + _w - 10, _y, 10, _h - 10) {}
 
 	void Render(olc::PixelGameEngine* pge) override {
 		auto layer = pge->GetDrawTarget();
@@ -229,6 +233,12 @@ struct scrollable_vh : public scrollable
 		pge->SetDrawTarget(layer);
 		pge->DrawSprite(x, y, &frame);
 	}
+	void OnMouseWheel(olc::PixelGameEngine* pge) override {
+		if (pge->GetKey(olc::Key::CTRL).bHeld)
+			pge->GetMouseWheel() > 0 ? scroll_h.Increase() : scroll_h.Decrease();
+		else
+			pge->GetMouseWheel() > 0 ? scroll_v.Increase() : scroll_v.Decrease();
+	}
 };
 
 struct row : public ui_element
@@ -238,6 +248,7 @@ struct row : public ui_element
 	row(int _x, int _y, int _w, int _h) :
 		ui_element(_x, _y, _w, _h) {}
 	void virtual RenderHeader(olc::PixelGameEngine* pge) = 0;
+	void Render(olc::PixelGameEngine* pge, int x, int y) override = 0;
 };
 
 struct row_ip : public row
@@ -267,6 +278,13 @@ struct row_ip : public row
 		pge->DrawString(x + 96	, y, std::to_string(header.tlen));
 		//pge->DrawString(x, y + 60, std::to_string(header.id));
 	}
+	void Render(olc::PixelGameEngine* pge, int x, int y) override {
+		pge->DrawString(x, y, std::to_string(header.ver_ihl & 0x0f));
+		pge->DrawString(x + 32, y, std::to_string(header.ver_ihl & 0xf0));
+		pge->DrawString(x + 64, y, std::to_string(header.tos));
+		pge->DrawString(x + 96, y, std::to_string(header.tlen));
+		//pge->DrawString(x, y + 60, std::to_string(header.id));
+	}
 	void RenderHeader(olc::PixelGameEngine* pge) override {
 		pge->DrawString(x		, y, "ver");
 		pge->DrawString(x + 32	, y, "ihl");
@@ -284,23 +302,30 @@ struct table : public scrollable_vh
 	table() :
 		scrollable_vh(), header() {}
 	table(int _x, int _y, int _w, int _h, bool _bActive = true, olc::Pixel _mainColor = olc::WHITE, olc::Pixel _mouseOnColor = olc::YELLOW, olc::Pixel _activeColor = olc::BLUE) :
-		scrollable_vh(_x, _y, _w, _h, _bActive, _mainColor, _mouseOnColor, _activeColor), header(_x, _y, _w, 10, { 0 }) {}
+		scrollable_vh(_x, _y, _w, _h, _bActive, _mainColor, _mouseOnColor, _activeColor), header(_x, _y, _w, 10, { 0 }) {
+		scroll_v.top = -frame.height / 10 + 1;
+		scroll_v.current = 0;
+		scroll_v.bReversed = true;
+	}
 
 	void push_back(typename T::data&& _data) {
 		rows.emplace_back(x, y + (rows.size() + 1) * 10, w, 10, _data);
+		scroll_v.top++;
 	}
 	void Render(olc::PixelGameEngine* pge) override {
 		auto layer = pge->GetDrawTarget();
 		pge->SetDrawTarget(&frame);
+		pge->Clear(olc::BLACK);
 
 		header.RenderHeader(pge);
-		for (auto& r : rows)
-			r.Render(pge);
-		scroll_h.Render(pge);
-		scroll_v.Render(pge);
+		for (int i = 1, row = scroll_v.current; i <= (frame.height + 9) / 10 && row < rows.size(); i++, row++)
+			rows[row].Render(pge, x, y + i * 10);
 
 		pge->SetDrawTarget(layer);
+
 		pge->DrawSprite(x, y, &frame);
+		scroll_h.Render(pge);
+		scroll_v.Render(pge);
 	}
 };
 #pragma endregion
@@ -329,27 +354,17 @@ public:
 		screens = {
 			{ "main", (Screen)& Sniffer::MainScreen },
 		};
-		//uis = {
-		//	{ "main", {
-		//		std::make_shared<table<row_ip>>(0, 0, 500, 100)
-		//	}},
-		//};
 		auto t1 = std::make_shared<table<row_ip>>(0, 0, 500, 100);
 		t1.get()->push_back({ 0 });
-		t1.get()->push_back({ 0 });
-		t1.get()->push_back({ 0 });
-		t1.get()->push_back({ 0 });
-		t1.get()->push_back({ 0 });
-		t1.get()->push_back({ 0 });
-		t1.get()->push_back({ 0 });
-		t1.get()->push_back({ 0 });
-		t1.get()->push_back({ 0 });
-		t1.get()->push_back({ 0 });
-		t1.get()->push_back({ 0 });
-		t1.get()->push_back({ 0 });
-		t1.get()->push_back({ 0 });
-		t1.get()->push_back({ 0 });
-		t1.get()->push_back({ 0 });
+		t1.get()->push_back({ 1 });
+		t1.get()->push_back({ 2 });
+		t1.get()->push_back({ 3 });
+		t1.get()->push_back({ 4 });
+		t1.get()->push_back({ 5 });
+		t1.get()->push_back({ 6 });
+		t1.get()->push_back({ 7 });
+		t1.get()->push_back({ 8 });
+		t1.get()->push_back({ 9 });
 		uis["main"].push_back(t1);
 		ChangeScreen("main");
 
@@ -360,10 +375,21 @@ public:
 		if (!current_screen)
 			return false;
 
+		Clear(olc::BLACK);
+
+		// Controls
+		if (GetMouse(0).bPressed)
+			for (auto& ui : current_uis)
+				if (ui.get()->MouseCollide(this))
+					ui.get()->OnClick(this);
+		if (GetMouseWheel() != 0)
+			for (auto& ui : current_uis)
+				if (ui.get()->MouseCollide(this))
+					ui.get()->OnMouseWheel(this);
+
 		// Draw
-		for (auto& ui : current_uis) {
+		for (auto& ui : current_uis)
 			ui.get()->Render(this);
-		}
 
 		std::invoke(current_screen, *this, fElapsedTime);
 
