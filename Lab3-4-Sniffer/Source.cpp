@@ -10,12 +10,31 @@
 #include <mutex>
 #include <algorithm>
 #include <memory>
+#include <bitset>
+#include <sstream>
 
 #pragma comment(lib, "ws2_32.lib")
 
 
 typedef bool(olc::PixelGameEngine::* Screen)(float);
 typedef void(olc::PixelGameEngine::* BtnHandler)();
+
+
+#pragma region HELP_FUNCS
+std::string to_hex(int num) {
+	std::stringstream ss;
+	ss << std::hex << num;
+	return ss.str();
+}
+
+std::string to_ip(unsigned int _ip) {
+	char ip[INET_ADDRSTRLEN];
+	IN_ADDR addr = { _ip };
+	InetNtopA(AF_INET, &addr, ip, sizeof(ip));
+	return ip;
+}
+#pragma endregion
+
 
 
 #pragma region UI_ELEMENTS
@@ -30,7 +49,6 @@ struct ui_element
 	olc::Pixel mainColor = olc::WHITE;
 	olc::Pixel mouseOnColor = olc::YELLOW;
 	olc::Pixel activeColor = olc::BLUE;
-	std::shared_ptr<BtnHandler> handler;
 
 	ui_element() :
 		x(0), y(0), w(0), h(0), bActive(true), bSelected(false), mainColor(olc::WHITE), mouseOnColor(olc::YELLOW), activeColor(olc::BLUE) {}
@@ -243,8 +261,12 @@ struct scrollable_vh : public scrollable
 
 struct row : public ui_element
 {
+	const static int content_width = 0;
+
 	row() :
 		ui_element() {}
+	row(int _x, int _y) :
+		ui_element(_x, _y, content_width, 10) {}
 	row(int _x, int _y, int _w, int _h) :
 		ui_element(_x, _y, _w, _h) {}
 	void virtual RenderHeader(olc::PixelGameEngine* pge) = 0;
@@ -253,6 +275,8 @@ struct row : public ui_element
 
 struct row_ip : public row
 {
+	const static int content_width = 680;
+
 	struct data {
 		uint8_t		ver_ihl;
 		uint8_t		tos;
@@ -268,6 +292,8 @@ struct row_ip : public row
 
 	row_ip() :
 		row() {}
+	row_ip(int _x, int _y, data _header) :
+		row(_x, _y, content_width, 10), header(_header) {}
 	row_ip(int _x, int _y, int _w, int _h, data _header) :
 		row(_x, _y, _w, _h), header(_header) {}
 
@@ -276,20 +302,45 @@ struct row_ip : public row
 		pge->DrawString(x + 32	, y, std::to_string(header.ver_ihl & 0xf0));
 		pge->DrawString(x + 64	, y, std::to_string(header.tos));
 		pge->DrawString(x + 96	, y, std::to_string(header.tlen));
-		//pge->DrawString(x, y + 60, std::to_string(header.id));
+		pge->DrawString(x + 176	, y, std::to_string(header.id));
+		pge->DrawString(x + 224	, y, std::bitset<3>(header.flags_fo).to_string());
+		pge->DrawString(x + 272	, y, std::to_string(std::bitset<13>(header.flags_fo >> 3).to_ullong() * 8));
+		pge->DrawString(x + 312	, y, std::to_string(header.ttl));
+		pge->DrawString(x + 344	, y, std::to_string(header.proto));
+		pge->DrawString(x + 392	, y, to_hex(header.crc));
+		pge->DrawString(x + 424	, y, to_ip(header.src_addr));
+		pge->DrawString(x + 552	, y, to_ip(header.dst_addr));
+		pge->DrawLine(x, y + 9, x + content_width, y + 9, olc::GREY);
 	}
 	void Render(olc::PixelGameEngine* pge, int x, int y) override {
-		pge->DrawString(x, y, std::to_string(header.ver_ihl & 0x0f));
-		pge->DrawString(x + 32, y, std::to_string(header.ver_ihl & 0xf0));
-		pge->DrawString(x + 64, y, std::to_string(header.tos));
-		pge->DrawString(x + 96, y, std::to_string(header.tlen));
-		//pge->DrawString(x, y + 60, std::to_string(header.id));
+		pge->DrawString(x		, y, std::to_string(header.ver_ihl & 0x0f));
+		pge->DrawString(x + 32	, y, std::to_string(header.ver_ihl & 0xf0));
+		pge->DrawString(x + 64	, y, std::to_string(header.tos));
+		pge->DrawString(x + 96	, y, std::to_string(header.tlen));
+		pge->DrawString(x + 176	, y, std::to_string(header.id));
+		pge->DrawString(x + 224	, y, std::bitset<3>(header.flags_fo).to_string());
+		pge->DrawString(x + 272	, y, std::to_string(std::bitset<13>(header.flags_fo >> 3).to_ullong() * 8));
+		pge->DrawString(x + 312	, y, std::to_string(header.ttl));
+		pge->DrawString(x + 344	, y, std::to_string(header.proto));
+		pge->DrawString(x + 392	, y, to_hex(header.crc));
+		pge->DrawString(x + 424	, y, to_ip(header.src_addr));
+		pge->DrawString(x + 552	, y, to_ip(header.dst_addr));
+		pge->DrawLine(x, y + 9, x + content_width, y + 9, olc::GREY);
 	}
 	void RenderHeader(olc::PixelGameEngine* pge) override {
 		pge->DrawString(x		, y, "ver");
 		pge->DrawString(x + 32	, y, "ihl");
 		pge->DrawString(x + 64	, y, "tos");
 		pge->DrawString(x + 96	, y, "tlen");
+		pge->DrawString(x + 176	, y, "id");
+		pge->DrawString(x + 224	, y, "flags");
+		pge->DrawString(x + 272	, y, "fo");
+		pge->DrawString(x + 312	, y, "ttl");
+		pge->DrawString(x + 344	, y, "proto");
+		pge->DrawString(x + 392	, y, "crc");
+		pge->DrawString(x + 424	, y, "src");
+		pge->DrawString(x + 552	, y, "dst");
+		pge->DrawLine(x, y + 9, x + content_width, y + 9, olc::GREY);
 	}
 };
 
@@ -343,30 +394,38 @@ protected:
 	Screen current_screen = nullptr;
 	std::unordered_map<std::string, Screen> screens;
 
-	std::unordered_map<std::string, std::vector<std::shared_ptr<ui_element>>> uis;
-	std::vector<std::shared_ptr<ui_element>> current_uis;
-	std::vector<std::shared_ptr<button>> buttons;
-	std::vector<std::shared_ptr<input>> inputs;
+	// ui elements
+	std::unordered_map<std::string, std::vector<std::shared_ptr<ui_element>>> uis;		// all app uis
+	std::vector<std::shared_ptr<ui_element>> current_uis;								// ui on current screen
+	std::vector<std::shared_ptr<button>> buttons;										// buttons on current screen
+	std::vector<std::shared_ptr<input>> inputs;											// inputs on current screen
+	std::vector<std::shared_ptr<table<row_ip>>> ip_tables;								// tables with row_ip rows on current screen
 
 
 public:
 	bool OnUserCreate() override {
 		screens = {
-			{ "main", (Screen)& Sniffer::MainScreen },
+			{ "start",	(Screen)& Sniffer::StartScreen	},
+			{ "main",	(Screen)& Sniffer::MainScreen	},
 		};
-		auto t1 = std::make_shared<table<row_ip>>(0, 0, 500, 100);
-		t1.get()->push_back({ 0 });
-		t1.get()->push_back({ 1 });
-		t1.get()->push_back({ 2 });
-		t1.get()->push_back({ 3 });
+
+		auto start_btn = std::make_shared<button>((ScreenWidth() - 100) / 2, ScreenHeight() - 40, 100, 20, "Start", (BtnHandler)& Sniffer::StartHandler);
+		uis["start"].push_back(start_btn);
+
+		auto t1 = std::make_shared<table<row_ip>>(0, 0, ScreenWidth(), ScreenHeight() - 100);
 		t1.get()->push_back({ 4 });
-		t1.get()->push_back({ 5 });
-		t1.get()->push_back({ 6 });
-		t1.get()->push_back({ 7 });
-		t1.get()->push_back({ 8 });
-		t1.get()->push_back({ 9 });
+		t1.get()->push_back({ 4 });
+		t1.get()->push_back({ 4 });
+		t1.get()->push_back({ 4 });
+		t1.get()->push_back({ 4 });
+		t1.get()->push_back({ 4 });
+		t1.get()->push_back({ 4 });
+		t1.get()->push_back({ 4 });
+		t1.get()->push_back({ 4 });
+		t1.get()->push_back({ 4 });
 		uis["main"].push_back(t1);
-		ChangeScreen("main");
+
+		ChangeScreen("start");
 
 		return true;
 	}
@@ -387,11 +446,12 @@ public:
 				if (ui.get()->MouseCollide(this))
 					ui.get()->OnMouseWheel(this);
 
+		// Run screen logic
+		std::invoke(current_screen, *this, fElapsedTime);
+
 		// Draw
 		for (auto& ui : current_uis)
 			ui.get()->Render(this);
-
-		std::invoke(current_screen, *this, fElapsedTime);
 
 		return true;
 	}
@@ -404,17 +464,27 @@ private:
 		for (auto& ui : uis) {
 			T* item = dynamic_cast<T*>(ui.get());
 			if (item) {
-				v.emplace_back(item);
+				v.emplace_back(std::static_pointer_cast<T>(ui));
 			}
 		}
 	}
 
 	void ChangeScreen(std::string screenName) {
 		current_screen = screens[screenName];
+		if (current_screen == nullptr) {
+			screenName = "error";
+			// todo add message
+			current_screen = screens[screenName];
+		}
 		// Ќе круто, что происходит полное копирование
 		current_uis = uis[screenName];
 		Extract(buttons, current_uis);
 		Extract(inputs, current_uis);
+		Extract(ip_tables, current_uis);
+	}
+
+	bool StartScreen(float fElapsedTime) {
+		return true;
 	}
 
 	bool MainScreen(float fElapsedTime) {
@@ -424,12 +494,19 @@ private:
 	bool ErrorScreen(float fElapsedTime) {
 		return true;
 	}
+
+private:
+	void StartHandler() {
+		// create socket and start listening it
+
+		ChangeScreen("main");
+	}
 };
 
 
 int main(int argc, char* argv[]) {
 	Sniffer client;
-	if (client.Construct(600, 300, 2, 2))
+	if (client.Construct(690, 300, 2, 2))
 		client.Start();
 	return 0;
 }
