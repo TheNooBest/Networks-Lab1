@@ -64,7 +64,15 @@ struct ui_element
 	// You might or not to override
 	void virtual OnClick(olc::PixelGameEngine* pge) {};
 	void virtual OnMouseWheel(olc::PixelGameEngine* pge) {};
-	void virtual Render(olc::PixelGameEngine* pge, int x, int y) {};
+	void virtual Render(olc::PixelGameEngine* pge, int x, int y) {
+		int _x = this->x;
+		int _y = this->y;
+		this->x = x;
+		this->y = y;
+		Render(pge);
+		this->x = _x;
+		this->y = _y;
+	};
 
 	virtual ~ui_element() = default;
 };
@@ -261,21 +269,25 @@ struct scrollable_vh : public scrollable
 
 struct row : public ui_element
 {
+	const static int row_height = 12;
 	const static int content_width = 0;
+
+	struct data;
 
 	row() :
 		ui_element() {}
 	row(int _x, int _y) :
-		ui_element(_x, _y, content_width, 10) {}
+		ui_element(_x, _y, content_width, row_height) {}
 	row(int _x, int _y, int _w, int _h) :
 		ui_element(_x, _y, _w, _h) {}
 	void virtual RenderHeader(olc::PixelGameEngine* pge) = 0;
-	void Render(olc::PixelGameEngine* pge, int x, int y) override = 0;
 };
 
 struct row_ip : public row
 {
+	// hardcode
 	const static int content_width = 680;
+	const static inline std::vector<int> vd = { 32, 64, 96, 176, 224, 272, 312, 344, 392, 424, 552, 0 };
 
 	struct data {
 		uint8_t		ver_ihl;
@@ -293,60 +305,65 @@ struct row_ip : public row
 	row_ip() :
 		row() {}
 	row_ip(int _x, int _y, data _header) :
-		row(_x, _y, content_width, 10), header(_header) {}
+		row(_x, _y, content_width, row_height), header(_header) {}
 	row_ip(int _x, int _y, int _w, int _h, data _header) :
 		row(_x, _y, _w, _h), header(_header) {}
 
 	void Render(olc::PixelGameEngine* pge) override {
-		pge->DrawString(x		, y, std::to_string(header.ver_ihl & 0x0f));
-		pge->DrawString(x + 32	, y, std::to_string(header.ver_ihl & 0xf0));
-		pge->DrawString(x + 64	, y, std::to_string(header.tos));
-		pge->DrawString(x + 96	, y, std::to_string(header.tlen));
-		pge->DrawString(x + 176	, y, std::to_string(header.id));
-		pge->DrawString(x + 224	, y, std::bitset<3>(header.flags_fo).to_string());
-		pge->DrawString(x + 272	, y, std::to_string(std::bitset<13>(header.flags_fo >> 3).to_ullong() * 8));
-		pge->DrawString(x + 312	, y, std::to_string(header.ttl));
-		pge->DrawString(x + 344	, y, std::to_string(header.proto));
-		pge->DrawString(x + 392	, y, to_hex(header.crc));
-		pge->DrawString(x + 424	, y, to_ip(header.src_addr));
-		pge->DrawString(x + 552	, y, to_ip(header.dst_addr));
-		pge->DrawLine(x, y + 9, x + content_width, y + 9, olc::GREY);
+		pge->DrawString(x			, y + 2, std::to_string(header.ver_ihl & 0x0f));
+		pge->DrawString(x + vd[0]	, y + 2, std::to_string(header.ver_ihl & 0xf0));
+		pge->DrawString(x + vd[1]	, y + 2, std::to_string(header.tos));
+		pge->DrawString(x + vd[2]	, y + 2, std::to_string(header.tlen));
+		pge->DrawString(x + vd[3]	, y + 2, std::to_string(header.id));
+		pge->DrawString(x + vd[4]	, y + 2, std::bitset<3>(header.flags_fo).to_string());
+		pge->DrawString(x + vd[5]	, y + 2, std::to_string(std::bitset<13>(header.flags_fo >> 3).to_ullong() * 8));
+		pge->DrawString(x + vd[6]	, y + 2, std::to_string(header.ttl));
+		pge->DrawString(x + vd[7]	, y + 2, std::to_string(header.proto));
+		pge->DrawString(x + vd[8]	, y + 2, to_hex(header.crc));
+		pge->DrawString(x + vd[9]	, y + 2, to_ip(header.src_addr));
+		pge->DrawString(x + vd[10]	, y + 2, to_ip(header.dst_addr));
+		pge->DrawLine(x, y + row_height, x + content_width, y + row_height, olc::GREY);
 	}
 	void Render(olc::PixelGameEngine* pge, int x, int y) override {
-		pge->DrawString(x		, y, std::to_string(header.ver_ihl & 0x0f));
-		pge->DrawString(x + 32	, y, std::to_string(header.ver_ihl & 0xf0));
-		pge->DrawString(x + 64	, y, std::to_string(header.tos));
-		pge->DrawString(x + 96	, y, std::to_string(header.tlen));
-		pge->DrawString(x + 176	, y, std::to_string(header.id));
-		pge->DrawString(x + 224	, y, std::bitset<3>(header.flags_fo).to_string());
-		pge->DrawString(x + 272	, y, std::to_string(std::bitset<13>(header.flags_fo >> 3).to_ullong() * 8));
-		pge->DrawString(x + 312	, y, std::to_string(header.ttl));
-		pge->DrawString(x + 344	, y, std::to_string(header.proto));
-		pge->DrawString(x + 392	, y, to_hex(header.crc));
-		pge->DrawString(x + 424	, y, to_ip(header.src_addr));
-		pge->DrawString(x + 552	, y, to_ip(header.dst_addr));
-		pge->DrawLine(x, y + 9, x + content_width, y + 9, olc::GREY);
+		pge->DrawString(x			, y + 2, std::to_string(header.ver_ihl & 0x0f));
+		pge->DrawString(x + vd[0]	, y + 2, std::to_string(header.ver_ihl & 0xf0));
+		pge->DrawString(x + vd[1]	, y + 2, std::to_string(header.tos));
+		pge->DrawString(x + vd[2]	, y + 2, std::to_string(header.tlen));
+		pge->DrawString(x + vd[3]	, y + 2, std::to_string(header.id));
+		pge->DrawString(x + vd[4]	, y + 2, std::bitset<3>(header.flags_fo).to_string());
+		pge->DrawString(x + vd[5]	, y + 2, std::to_string(std::bitset<13>(header.flags_fo >> 3).to_ullong() * 8));
+		pge->DrawString(x + vd[6]	, y + 2, std::to_string(header.ttl));
+		pge->DrawString(x + vd[7]	, y + 2, std::to_string(header.proto));
+		pge->DrawString(x + vd[8]	, y + 2, to_hex(header.crc));
+		pge->DrawString(x + vd[9]	, y + 2, to_ip(header.src_addr));
+		pge->DrawString(x + vd[10]	, y + 2, to_ip(header.dst_addr));
+		pge->DrawLine(x, y + row_height, x + content_width, y + row_height, olc::GREY);
 	}
 	void RenderHeader(olc::PixelGameEngine* pge) override {
-		pge->DrawString(x		, y, "ver");
-		pge->DrawString(x + 32	, y, "ihl");
-		pge->DrawString(x + 64	, y, "tos");
-		pge->DrawString(x + 96	, y, "tlen");
-		pge->DrawString(x + 176	, y, "id");
-		pge->DrawString(x + 224	, y, "flags");
-		pge->DrawString(x + 272	, y, "fo");
-		pge->DrawString(x + 312	, y, "ttl");
-		pge->DrawString(x + 344	, y, "proto");
-		pge->DrawString(x + 392	, y, "crc");
-		pge->DrawString(x + 424	, y, "src");
-		pge->DrawString(x + 552	, y, "dst");
-		pge->DrawLine(x, y + 9, x + content_width, y + 9, olc::GREY);
+		pge->DrawString(x			, y + 2, "ver");
+		pge->DrawString(x + vd[0]	, y + 2, "ihl");
+		pge->DrawString(x + vd[1]	, y + 2, "tos");
+		pge->DrawString(x + vd[2]	, y + 2, "tlen");
+		pge->DrawString(x + vd[3]	, y + 2, "id");
+		pge->DrawString(x + vd[4]	, y + 2, "flags");
+		pge->DrawString(x + vd[5]	, y + 2, "fo");
+		pge->DrawString(x + vd[6]	, y + 2, "ttl");
+		pge->DrawString(x + vd[7]	, y + 2, "proto");
+		pge->DrawString(x + vd[8]	, y + 2, "crc");
+		pge->DrawString(x + vd[9]	, y + 2, "src");
+		pge->DrawString(x + vd[10]	, y + 2, "dst");
+		pge->DrawLine(x, y + row_height, x + content_width, y + row_height, olc::GREY);
+	}
+	static int Delimeters(int pos) {
+		return vd[pos] - 4;
 	}
 };
 
 template<typename T>
 struct table : public scrollable_vh
 {
+	static_assert(std::is_base_of<row, T>::value, "Template argument must be derived from 'struct row'");
+
 	T header;
 	std::vector<T> rows;
 
@@ -354,13 +371,13 @@ struct table : public scrollable_vh
 		scrollable_vh(), header() {}
 	table(int _x, int _y, int _w, int _h, bool _bActive = true, olc::Pixel _mainColor = olc::WHITE, olc::Pixel _mouseOnColor = olc::YELLOW, olc::Pixel _activeColor = olc::BLUE) :
 		scrollable_vh(_x, _y, _w, _h, _bActive, _mainColor, _mouseOnColor, _activeColor), header(_x, _y, _w, 10, { 0 }) {
-		scroll_v.top = -frame.height / 10 + 1;
+		scroll_v.top = -frame.height / T::row_height + 1;
 		scroll_v.current = 0;
 		scroll_v.bReversed = true;
 	}
 
 	void push_back(typename T::data&& _data) {
-		rows.emplace_back(x, y + (rows.size() + 1) * 10, w, 10, _data);
+		rows.emplace_back(x, y + (rows.size() + 1) * T::row_height, _data);
 		scroll_v.top++;
 	}
 	void Render(olc::PixelGameEngine* pge) override {
@@ -369,8 +386,10 @@ struct table : public scrollable_vh
 		pge->Clear(olc::BLACK);
 
 		header.RenderHeader(pge);
-		for (int i = 1, row = scroll_v.current; i <= (frame.height + 9) / 10 && row < rows.size(); i++, row++)
-			rows[row].Render(pge, x, y + i * 10);
+		for (int i = 1, row = scroll_v.current; i <= (frame.height + T::row_height - 1) / T::row_height && row < rows.size(); i++, row++)
+			rows[row].Render(pge, x, y + i * T::row_height);
+		for (int i = 0, _x; (_x = T::Delimeters(i)) >= 0; i++)
+			pge->DrawLine(_x, 0, _x, min((rows.size() + 1) * T::row_height, frame.height));
 
 		pge->SetDrawTarget(layer);
 
@@ -413,6 +432,11 @@ public:
 		uis["start"].push_back(start_btn);
 
 		auto t1 = std::make_shared<table<row_ip>>(0, 0, ScreenWidth(), ScreenHeight() - 100);
+		t1.get()->push_back({ 4 });
+		t1.get()->push_back({ 4 });
+		t1.get()->push_back({ 4 });
+		t1.get()->push_back({ 4 });
+		t1.get()->push_back({ 4 });
 		t1.get()->push_back({ 4 });
 		t1.get()->push_back({ 4 });
 		t1.get()->push_back({ 4 });
