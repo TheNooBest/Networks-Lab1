@@ -12,6 +12,7 @@
 #include <memory>
 #include <bitset>
 #include <sstream>
+#include <string>
 
 #pragma comment(lib, "ws2_32.lib")
 
@@ -270,23 +271,61 @@ struct scrollable_vh : public scrollable
 struct row : public ui_element
 {
 	const static int row_height = 12;
-	const static int content_width = 0;
+	const static int row_width = 0;
+	const static inline std::vector<int> vd = {};
 
 	struct data;
 
 	row() :
 		ui_element() {}
 	row(int _x, int _y) :
-		ui_element(_x, _y, content_width, row_height) {}
+		ui_element(_x, _y, row_width, row_height) {}
 	row(int _x, int _y, int _w, int _h) :
 		ui_element(_x, _y, _w, _h) {}
 	void virtual RenderHeader(olc::PixelGameEngine* pge) = 0;
 };
 
+struct row_in : public row
+{
+	const static int row_width = 128;
+	const static inline std::vector<int> vd = { 32, 0 };
+
+	struct data {
+		uint8_t num;
+		char addr[16];
+	} info = { 0 };
+
+	row_in() :
+		row() {}
+	row_in(int _x, int _y) :
+		row(_x, _y, row_width, row_height) {}
+	row_in(int _x, int _y, data& _info) :
+		row(_x, _y), info(_info) {}
+
+	void Render(olc::PixelGameEngine* pge) override {
+		pge->DrawString(x			, y + 2, std::to_string(info.num));
+		pge->DrawString(x + vd[0]	, y + 2, info.addr);
+		pge->DrawLine(x, y + row_height, x + row_width, y + row_height);
+	}
+	void Render(olc::PixelGameEngine* pge, int x, int y) override {
+		pge->DrawString(x			, y + 2, std::to_string(info.num));
+		pge->DrawString(x + vd[0]	, y + 2, info.addr);
+		pge->DrawLine(x, y + row_height, x + row_width, y + row_height);
+	}
+	void RenderHeader(olc::PixelGameEngine* pge) override {
+		pge->DrawString(x			, y + 2, "num");
+		pge->DrawString(x + vd[0]	, y + 2, "addr");
+		pge->DrawLine(x, y + row_height, x + row_width, y + row_height);
+	}
+	static int Delimeters(int pos) {
+		return vd[pos] - 4;
+	}
+};
+
 struct row_ip : public row
 {
 	// hardcode
-	const static int content_width = 680;
+	const static int row_width = 680;
 	const static inline std::vector<int> vd = { 32, 64, 96, 176, 224, 272, 312, 344, 392, 424, 552, 0 };
 
 	struct data {
@@ -304,9 +343,11 @@ struct row_ip : public row
 
 	row_ip() :
 		row() {}
-	row_ip(int _x, int _y, data _header) :
-		row(_x, _y, content_width, row_height), header(_header) {}
-	row_ip(int _x, int _y, int _w, int _h, data _header) :
+	row_ip(int _x, int _y) :
+		row(_x, _y, row_width, row_height) {}
+	row_ip(int _x, int _y, data& _header) :
+		row(_x, _y, row_width, row_height), header(_header) {}
+	row_ip(int _x, int _y, int _w, int _h, data& _header) :
 		row(_x, _y, _w, _h), header(_header) {}
 
 	void Render(olc::PixelGameEngine* pge) override {
@@ -322,7 +363,7 @@ struct row_ip : public row
 		pge->DrawString(x + vd[8]	, y + 2, to_hex(header.crc));
 		pge->DrawString(x + vd[9]	, y + 2, to_ip(header.src_addr));
 		pge->DrawString(x + vd[10]	, y + 2, to_ip(header.dst_addr));
-		pge->DrawLine(x, y + row_height, x + content_width, y + row_height, olc::GREY);
+		pge->DrawLine(x, y + row_height, x + row_width, y + row_height, olc::GREY);
 	}
 	void Render(olc::PixelGameEngine* pge, int x, int y) override {
 		pge->DrawString(x			, y + 2, std::to_string(header.ver_ihl & 0x0f));
@@ -337,7 +378,7 @@ struct row_ip : public row
 		pge->DrawString(x + vd[8]	, y + 2, to_hex(header.crc));
 		pge->DrawString(x + vd[9]	, y + 2, to_ip(header.src_addr));
 		pge->DrawString(x + vd[10]	, y + 2, to_ip(header.dst_addr));
-		pge->DrawLine(x, y + row_height, x + content_width, y + row_height, olc::GREY);
+		pge->DrawLine(x, y + row_height, x + row_width, y + row_height, olc::GREY);
 	}
 	void RenderHeader(olc::PixelGameEngine* pge) override {
 		pge->DrawString(x			, y + 2, "ver");
@@ -352,7 +393,7 @@ struct row_ip : public row
 		pge->DrawString(x + vd[8]	, y + 2, "crc");
 		pge->DrawString(x + vd[9]	, y + 2, "src");
 		pge->DrawString(x + vd[10]	, y + 2, "dst");
-		pge->DrawLine(x, y + row_height, x + content_width, y + row_height, olc::GREY);
+		pge->DrawLine(x, y + row_height, x + row_width, y + row_height, olc::GREY);
 	}
 	static int Delimeters(int pos) {
 		return vd[pos] - 4;
@@ -370,14 +411,14 @@ struct table : public scrollable_vh
 	table() :
 		scrollable_vh(), header() {}
 	table(int _x, int _y, int _w, int _h, bool _bActive = true, olc::Pixel _mainColor = olc::WHITE, olc::Pixel _mouseOnColor = olc::YELLOW, olc::Pixel _activeColor = olc::BLUE) :
-		scrollable_vh(_x, _y, _w, _h, _bActive, _mainColor, _mouseOnColor, _activeColor), header(_x, _y, _w, 10, { 0 }) {
+		scrollable_vh(_x, _y, _w, _h, _bActive, _mainColor, _mouseOnColor, _activeColor), header(0, 0) {
 		scroll_v.top = -frame.height / T::row_height + 1;
 		scroll_v.current = 0;
 		scroll_v.bReversed = true;
 	}
 
-	void push_back(typename T::data&& _data) {
-		rows.emplace_back(x, y + (rows.size() + 1) * T::row_height, _data);
+	void push_back(typename T::data& _data) {
+		rows.emplace_back(0, (rows.size() + 1) * T::row_height, _data);
 		scroll_v.top++;
 	}
 	void Render(olc::PixelGameEngine* pge) override {
@@ -386,10 +427,11 @@ struct table : public scrollable_vh
 		pge->Clear(olc::BLACK);
 
 		header.RenderHeader(pge);
-		for (int i = 1, row = scroll_v.current; i <= (frame.height + T::row_height - 1) / T::row_height && row < rows.size(); i++, row++)
-			rows[row].Render(pge, x, y + i * T::row_height);
-		for (int i = 0, _x; (_x = T::Delimeters(i)) >= 0; i++)
-			pge->DrawLine(_x, 0, _x, min((rows.size() + 1) * T::row_height, frame.height));
+		int i = 1;
+		for (int row = scroll_v.current; i <= (frame.height + T::row_height - 1) / T::row_height && row < rows.size(); i++, row++)
+			rows[row].Render(pge, 0, i * T::row_height);
+		for (int j = 0, _x; (_x = T::Delimeters(j)) >= 0; j++)
+			pge->DrawLine(_x, 0, _x, i * T::row_height);
 
 		pge->SetDrawTarget(layer);
 
@@ -412,6 +454,7 @@ public:
 protected:
 	Screen current_screen = nullptr;
 	std::unordered_map<std::string, Screen> screens;
+	std::string errorMessage;
 
 	// ui elements
 	std::unordered_map<std::string, std::vector<std::shared_ptr<ui_element>>> uis;		// all app uis
@@ -419,6 +462,16 @@ protected:
 	std::vector<std::shared_ptr<button>> buttons;										// buttons on current screen
 	std::vector<std::shared_ptr<input>> inputs;											// inputs on current screen
 	std::vector<std::shared_ptr<table<row_ip>>> ip_tables;								// tables with row_ip rows on current screen
+	std::vector<std::shared_ptr<table<row_in>>> in_tables;								// tables with row_in rows on current screen
+
+	// data
+	SOCKET sniffer = SOCKET_ERROR;
+	ADDRINFO* addrinfo = NULL;
+	WSADATA wsa;
+	SOCKADDR_IN dest;
+	IN_ADDR addr;
+	char hostname[100];
+	int in;
 
 
 public:
@@ -426,30 +479,26 @@ public:
 		screens = {
 			{ "start",	(Screen)& Sniffer::StartScreen	},
 			{ "main",	(Screen)& Sniffer::MainScreen	},
+			{ "error",	(Screen)& Sniffer::ErrorScreen	},
 		};
 
-		auto start_btn = std::make_shared<button>((ScreenWidth() - 100) / 2, ScreenHeight() - 40, 100, 20, "Start", (BtnHandler)& Sniffer::StartHandler);
+		auto in_list = std::make_shared<table<row_in>>(100, 20, ScreenWidth() - 200, row_in::row_height * 14 + 10);
+		auto inp = std::make_shared<input>(100, ScreenHeight() - 80, ScreenWidth() - 200, 20);
+		auto list_btn = std::make_shared<button>((ScreenWidth() - 100) / 2 - 60, ScreenHeight() - 40, 100, 20, "In list", (BtnHandler)&Sniffer::InterfaceListHandler);
+		auto start_btn = std::make_shared<button>((ScreenWidth() - 100) / 2 + 60, ScreenHeight() - 40, 100, 20, "Start", (BtnHandler)&Sniffer::StartHandler);
+		uis["start"].push_back(in_list);
+		uis["start"].push_back(inp);
+		uis["start"].push_back(list_btn);
 		uis["start"].push_back(start_btn);
 
-		auto t1 = std::make_shared<table<row_ip>>(0, 0, ScreenWidth(), ScreenHeight() - 100);
-		t1.get()->push_back({ 4 });
-		t1.get()->push_back({ 4 });
-		t1.get()->push_back({ 4 });
-		t1.get()->push_back({ 4 });
-		t1.get()->push_back({ 4 });
-		t1.get()->push_back({ 4 });
-		t1.get()->push_back({ 4 });
-		t1.get()->push_back({ 4 });
-		t1.get()->push_back({ 4 });
-		t1.get()->push_back({ 4 });
-		t1.get()->push_back({ 4 });
-		t1.get()->push_back({ 4 });
-		t1.get()->push_back({ 4 });
-		t1.get()->push_back({ 4 });
-		t1.get()->push_back({ 4 });
+		auto t1 = std::make_shared<table<row_ip>>(0, 0, ScreenWidth(), row_ip::row_height * 10 + 10 + row_ip::row_height / 2);
 		uis["main"].push_back(t1);
 
+		auto back = std::make_shared<button>((ScreenWidth() / 2) - 50, ScreenHeight() - 40, 100, 20, "To start", (BtnHandler)&Sniffer::BackToStartHandler);
+		uis["error"].push_back(back);
+
 		ChangeScreen("start");
+		InterfaceListHandler();
 
 		return true;
 	}
@@ -461,21 +510,32 @@ public:
 		Clear(olc::BLACK);
 
 		// Controls
-		if (GetMouse(0).bPressed)
+		if (GetMouse(0).bPressed) {
 			for (auto& ui : current_uis)
-				if (ui.get()->MouseCollide(this))
-					ui.get()->OnClick(this);
+				if (ui->MouseCollide(this))
+					ui->OnClick(this);
+			for (auto& in : inputs)
+				in->bSelected = in->MouseCollide(this);
+		}
 		if (GetMouseWheel() != 0)
 			for (auto& ui : current_uis)
-				if (ui.get()->MouseCollide(this))
-					ui.get()->OnMouseWheel(this);
+				if (ui->MouseCollide(this))
+					ui->OnMouseWheel(this);
+		bool bShiftPressed = GetKey(olc::Key::SHIFT).bHeld;
+		for (int i = 0; i <= olc::Key::DOT; i++) {
+			olc::Key key = olc::Key(i);
+			if (GetKey(key).bPressed)
+				for (auto& in : inputs)
+					if (in->bSelected)
+						in->KeyPressed(key, bShiftPressed);
+		}
 
 		// Run screen logic
 		std::invoke(current_screen, *this, fElapsedTime);
 
 		// Draw
 		for (auto& ui : current_uis)
-			ui.get()->Render(this);
+			ui->Render(this);
 
 		return true;
 	}
@@ -497,7 +557,7 @@ private:
 		current_screen = screens[screenName];
 		if (current_screen == nullptr) {
 			screenName = "error";
-			// todo add message
+			errorMessage = "No such screen";
 			current_screen = screens[screenName];
 		}
 		// Ќе круто, что происходит полное копирование
@@ -505,6 +565,7 @@ private:
 		Extract(buttons, current_uis);
 		Extract(inputs, current_uis);
 		Extract(ip_tables, current_uis);
+		Extract(in_tables, current_uis);
 	}
 
 	bool StartScreen(float fElapsedTime) {
@@ -516,14 +577,104 @@ private:
 	}
 
 	bool ErrorScreen(float fElapsedTime) {
+		DrawString(0, 0, errorMessage);
 		return true;
 	}
 
 private:
+	void InterfaceListHandler() {
+		if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
+			errorMessage = "WSAStartup() failed. : " + std::to_string(WSAGetLastError());
+			ChangeScreen("error");
+			return;
+		}
+
+		if (gethostname(hostname, sizeof(hostname)) == SOCKET_ERROR) {
+			errorMessage = "Error: " + std::to_string(WSAGetLastError());
+			WSACleanup();
+			ChangeScreen("error");
+			return;
+		}
+
+		ADDRINFO hints = { 0 };
+		ADDRINFO* ptr = NULL;
+		hints.ai_family = AF_INET;
+		hints.ai_socktype = SOCK_RAW;
+		hints.ai_protocol = IPPROTO_TCP;
+		auto ret = getaddrinfo(hostname, "4321", &hints, &addrinfo);
+		if (ret != 0) {
+			errorMessage = "getaddrinfo() failed. : " + std::to_string(WSAGetLastError()) + " : " + gai_strerrorA(ret);
+			WSACleanup();
+			ChangeScreen("error");
+			return;
+		}
+		ptr = addrinfo;
+
+		in_tables[0]->rows.clear();
+		for (int i = 0; ptr != NULL; ptr = ptr->ai_next, i++) {
+			row_in::data d = { i };
+			auto ret = InetNtopA(AF_INET, ptr->ai_addr, d.addr, 16);
+			if (ret == nullptr) {
+				errorMessage = "Can't get one of interfaces";
+				WSACleanup();
+				ChangeScreen("error");
+				return;
+			}
+			in_tables[0]->push_back(d);
+		}
+	}
+
 	void StartHandler() {
-		// create socket and start listening it
+		if (addrinfo == nullptr) {
+			errorMessage = "Interface list is not initialized";
+			WSACleanup();
+			ChangeScreen("error");
+			return;
+		}
+
+		int if_num = atoi(inputs[0]->strInput.c_str());
+
+		// todo get correct interface
+		ADDRINFO* ptr = addrinfo;
+
+		sniffer = socket(AF_INET, SOCK_RAW, IPPROTO_IP);
+		if (sniffer == SOCKET_ERROR) {
+			errorMessage = "socket() failed : " + std::to_string(WSAGetLastError());
+			WSACleanup();
+			ChangeScreen("error");
+			return;
+		}
+
+		for (int i = 0; ptr != NULL; ptr = ptr->ai_next, i++) {
+			if (i == if_num) {
+				dest = { 0 };
+				memcpy(&dest, ptr->ai_addr, sizeof(dest));
+				dest.sin_family = AF_INET;
+				dest.sin_port = 0;
+				break;
+			}
+		}
+
+		if (ptr == NULL) {
+			errorMessage = "No such interface";
+			WSACleanup();
+			ChangeScreen("error");
+			return;
+		}
+
+		auto ret = bind(sniffer, (sockaddr*)&dest, sizeof(dest));
+		if (ret == SOCKET_ERROR) {
+			errorMessage = "bind() failed. : " + std::to_string(WSAGetLastError());
+			WSACleanup();
+			ChangeScreen("error");
+			return;
+		}
 
 		ChangeScreen("main");
+	}
+
+	void BackToStartHandler() {
+		ChangeScreen("start");
 	}
 };
 
