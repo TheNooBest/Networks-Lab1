@@ -1,8 +1,9 @@
 #define OLC_PGE_APPLICATION
 #define _WINSOCKAPI_
 #define _CRT_SECURE_NO_WARNINGS
+#define _WINSOCK_DEPRECATED_NO_WARNINGS
 
-#include "../Lab1-2/olcPixelGameEngine.h"
+#include "olcPixelGameEngine.h"
 #include <unordered_map>
 #include <functional>
 #include <WinSock2.h>
@@ -11,34 +12,24 @@
 #include <algorithm>
 #include <memory>
 #include <bitset>
+#include <iostream>
 #include <sstream>
 #include <string>
 #include <any>
 
 #pragma comment(lib, "ws2_32.lib")
 
-#define SIO_RCVALL _WSAIOW(IOC_VENDOR,1) //this removes the need of mstcpip.h
+
+#include <WinInet.h>
+
+#pragma comment(lib, "wininet")
+
+
+using namespace std::chrono_literals;
 
 
 typedef bool(olc::PixelGameEngine::* Screen)(float);
 typedef void(olc::PixelGameEngine::* BtnHandler)(std::any);
-
-
-#pragma region HELP_FUNCS
-std::string to_hex(int num) {
-	std::stringstream ss;
-	ss << std::hex << num;
-	return ss.str();
-}
-
-std::string to_ip(unsigned int _ip) {
-	char ip[INET_ADDRSTRLEN];
-	IN_ADDR addr = { _ip };
-	InetNtopA(AF_INET, &addr, ip, sizeof(ip));
-	return ip;
-}
-#pragma endregion
-
 
 
 #pragma region UI_ELEMENTS
@@ -98,8 +89,8 @@ struct label : public ui_element
 
 	label() :
 		ui_element(), vPos(TOP), hPos(LEFT), text("") {}
-	label(int _x, int _y, int _w, int _h, std::string _text, enum vPos _vPos = vPos::TOP, enum hPos _hPos = hPos::LEFT, olc::Pixel _mainColor = olc::WHITE) :
- 		ui_element(_x, _y, _w, _h, text.size() * 8, 8, true, _mainColor), text(_text), vPos(_vPos), hPos(_hPos) {}
+	label(int _x, int _y, int _w, int _h, std::string _text = "", enum vPos _vPos = vPos::TOP, enum hPos _hPos = hPos::LEFT, olc::Pixel _mainColor = olc::WHITE) :
+		ui_element(_x, _y, _w, _h, text.size() * 8, 8, true, _mainColor), text(_text), vPos(_vPos), hPos(_hPos) {}
 
 	void Render(olc::PixelGameEngine* pge) override {
 		int dx = 0, dy = 0;
@@ -134,8 +125,34 @@ struct label : public ui_element
 		//pge->DrawString(x + dx, y + dy, text, mainColor);
 		int chars_per_line = w / 8;
 		int line_count = h / 8;
-		for (int i = 0; i * chars_per_line < text.size() && i < line_count; i++) {
-			pge->DrawString(x, y + i * 8, text.substr(i * chars_per_line, chars_per_line));
+		//for (int i = 0; i * chars_per_line < text.size() && i < line_count; i++) {
+		//	pge->DrawString(x, y + i * 8, text.substr(i * chars_per_line, chars_per_line));
+		//}
+		int line = 0;
+		int pos = 0;
+		for (int i = 0; i < text.size(); i++) {
+			if (text[i] == '\n') {
+				line++;
+				pos = 0;
+			}
+			else if (text[i] == '\t') {
+				do { pos++; } while (pos % 4);
+				if (pos >= chars_per_line) {
+					pos = 0;
+					line++;
+				}
+			}
+			else {
+				char pseudostring[2] = { 0 };
+				pseudostring[0] = text[i];
+				pge->DrawString(x + pos * 8, y + line * 8, pseudostring);
+				pos++;
+				if (pos >= chars_per_line) {
+					pos = 0;
+					line++;
+				}
+			}
+			if (line >= line_count) break;
 		}
 	}
 };
@@ -200,6 +217,8 @@ struct input : public ui_element
 			strInput.push_back('.');
 		if (key == olc::Key::SPACE)
 			strInput.push_back(' ');
+		if (key == olc::Key::SLASH)
+			strInput.push_back('/');
 		if (key == olc::Key::BACK)
 			if (!strInput.empty()) strInput.pop_back();
 	}
@@ -349,120 +368,68 @@ struct row : public ui_element
 	void virtual Clear() = 0;
 };
 
-struct row_in : public row
+struct row_ftp : public row
 {
-	const static int row_width = 128;
-	const static inline std::vector<int> vd = { 32, 0 };
+	const static int row_width = 144;
+	const static inline std::vector<int> vd = { 16, 0 };
+
+	enum obj_type : uint8_t {
+		dir = 0,
+		file = 1,
+	};
 
 	struct data {
-		uint8_t num;
-		char addr[16];
-	} info = { 0 };
-	struct inner_data;
+		obj_type type;
+		char name[64];
+	} info = { dir };
 
-	row_in() :
+	row_ftp() :
 		row() {}
-	row_in(int _x, int _y) :
-		row(_x, _y, row_width, row_height) {}
-	row_in(int _x, int _y, data& _info) :
-		row(_x, _y), info(_info) {}
+	row_ftp(int x, int y) :
+		row(x, y, row_width, row_height) {}
+	row_ftp(int x, int y, data& data) :
+		row(x, y), info(data) {}
 
 	void Render(olc::PixelGameEngine* pge) override {
-		pge->DrawString(x			, y + 2, std::to_string(info.num));
-		pge->DrawString(x + vd[0]	, y + 2, info.addr);
+		std::string t;
+		switch (info.type)
+		{
+		case obj_type::dir:
+			t = "d";
+			break;
+		case obj_type::file:
+			t = "f";
+			break;
+		default:
+			t = "u";
+		}
+
+		pge->DrawString(x, y + 2, t);
+		pge->DrawString(x + vd[0], y + 2, info.name);
 		pge->DrawLine(x, y + row_height, x + row_width, y + row_height);
 	}
 	void Render(olc::PixelGameEngine* pge, int x, int y) override {
-		pge->DrawString(x			, y + 2, std::to_string(info.num));
-		pge->DrawString(x + vd[0]	, y + 2, info.addr);
+		std::string t;
+		switch (info.type)
+		{
+		case obj_type::dir:
+			t = "d";
+			break;
+		case obj_type::file:
+			t = "f";
+			break;
+		default:
+			t = "u";
+		}
+
+		pge->DrawString(x, y + 2, t);
+		pge->DrawString(x + vd[0], y + 2, info.name);
 		pge->DrawLine(x, y + row_height, x + row_width, y + row_height);
 	}
 	void RenderHeader(olc::PixelGameEngine* pge) override {
-		pge->DrawString(x			, y + 2, "num");
-		pge->DrawString(x + vd[0]	, y + 2, "addr");
+		pge->DrawString(x, y + 2, "t");
+		pge->DrawString(x + vd[0], y + 2, "name");
 		pge->DrawLine(x, y + row_height, x + row_width, y + row_height);
-	}
-	static int Delimeters(int pos) {
-		return vd[pos] - 4;
-	}
-	void Clear() override {}
-};
-
-struct row_ip : public row
-{
-	// hardcode
-	const static int row_width = 688;
-	const static inline std::vector<int> vd = { 32, 64, 96, 176, 224, 272, 312, 344, 392, 432, 560, 0 };
-
-	struct data {
-		uint8_t		ver_ihl;
-		uint8_t		tos;
-		uint16_t	tlen;
-		uint16_t	id;
-		uint16_t	flags_fo;
-		uint8_t		ttl;
-		uint8_t		proto;
-		uint16_t	crc;
-		uint32_t	src_addr;
-		uint32_t	dst_addr;
-	} header = { 0 };
-	struct inner_data {
-		char* data;
-	} inner = { 0 };
-
-	row_ip() :
-		row() {}
-	row_ip(int _x, int _y) :
-		row(_x, _y, row_width, row_height) {}
-	row_ip(int _x, int _y, data& _header) :
-		row(_x, _y, row_width, row_height), header(_header) {}
-	row_ip(int _x, int _y, int _w, int _h, data& _header) :
-		row(_x, _y, _w, _h), header(_header) {}
-
-	void Render(olc::PixelGameEngine* pge) override {
-		pge->DrawString(x			, y + 2, std::to_string((header.ver_ihl & 0xf0) >> 4));
-		pge->DrawString(x + vd[0]	, y + 2, std::to_string(header.ver_ihl & 0x0f));
-		pge->DrawString(x + vd[1]	, y + 2, std::to_string(header.tos));
-		pge->DrawString(x + vd[2]	, y + 2, std::to_string(header.tlen));
-		pge->DrawString(x + vd[3]	, y + 2, std::to_string(header.id));
-		pge->DrawString(x + vd[4]	, y + 2, std::bitset<3>(header.flags_fo).to_string());
-		pge->DrawString(x + vd[5]	, y + 2, std::to_string(std::bitset<13>(header.flags_fo >> 3).to_ullong() * 8));
-		pge->DrawString(x + vd[6]	, y + 2, std::to_string(header.ttl));
-		pge->DrawString(x + vd[7]	, y + 2, std::to_string(header.proto));
-		pge->DrawString(x + vd[8]	, y + 2, to_hex(header.crc));
-		pge->DrawString(x + vd[9]	, y + 2, to_ip(header.src_addr));
-		pge->DrawString(x + vd[10]	, y + 2, to_ip(header.dst_addr));
-		pge->DrawLine(x, y + row_height, x + row_width, y + row_height, olc::GREY);
-	}
-	void Render(olc::PixelGameEngine* pge, int x, int y) override {
-		pge->DrawString(x			, y + 2, std::to_string((header.ver_ihl & 0xf0) >> 4));
-		pge->DrawString(x + vd[0]	, y + 2, std::to_string(header.ver_ihl & 0x0f));
-		pge->DrawString(x + vd[1]	, y + 2, std::to_string(header.tos));
-		pge->DrawString(x + vd[2]	, y + 2, std::to_string(header.tlen));
-		pge->DrawString(x + vd[3]	, y + 2, std::to_string(header.id));
-		pge->DrawString(x + vd[4]	, y + 2, std::bitset<3>(header.flags_fo).to_string());
-		pge->DrawString(x + vd[5]	, y + 2, std::to_string(std::bitset<13>(header.flags_fo >> 3).to_ullong() * 8));
-		pge->DrawString(x + vd[6]	, y + 2, std::to_string(header.ttl));
-		pge->DrawString(x + vd[7]	, y + 2, std::to_string(header.proto));
-		pge->DrawString(x + vd[8]	, y + 2, to_hex(header.crc));
-		pge->DrawString(x + vd[9]	, y + 2, to_ip(header.src_addr));
-		pge->DrawString(x + vd[10]	, y + 2, to_ip(header.dst_addr));
-		pge->DrawLine(x, y + row_height, x + row_width, y + row_height, olc::GREY);
-	}
-	void RenderHeader(olc::PixelGameEngine* pge) override {
-		pge->DrawString(x			, y + 2, "ver");
-		pge->DrawString(x + vd[0]	, y + 2, "ihl");
-		pge->DrawString(x + vd[1]	, y + 2, "tos");
-		pge->DrawString(x + vd[2]	, y + 2, "tlen");
-		pge->DrawString(x + vd[3]	, y + 2, "id");
-		pge->DrawString(x + vd[4]	, y + 2, "flags");
-		pge->DrawString(x + vd[5]	, y + 2, "fo");
-		pge->DrawString(x + vd[6]	, y + 2, "ttl");
-		pge->DrawString(x + vd[7]	, y + 2, "proto");
-		pge->DrawString(x + vd[8]	, y + 2, "crc");
-		pge->DrawString(x + vd[9]	, y + 2, "src");
-		pge->DrawString(x + vd[10]	, y + 2, "dst");
-		pge->DrawLine(x, y + row_height, x + row_width, y + row_height, olc::GREY);
 	}
 	void OnClick(olc::PixelGameEngine* pge) override {
 		if (handler)
@@ -472,8 +439,7 @@ struct row_ip : public row
 		return vd[pos] - 4;
 	}
 	void Clear() override {
-		if (inner.data)
-			delete[] inner.data;
+
 	}
 };
 
@@ -498,6 +464,7 @@ struct table : public scrollable_vh
 	}
 
 	~table() {
+		std::lock_guard<std::mutex> lg(mut);
 		for (auto& r : rows)
 			r.Clear();
 	}
@@ -508,12 +475,16 @@ struct table : public scrollable_vh
 		ret.handler = rowHandler;
 		scroll_v.top++;
 	}
-	void push_back(typename T::data& _data, typename T::inner_data& _inner) {
+	//void push_back(typename T::data& _data, typename T::inner_data& _inner) {
+	//	std::lock_guard<std::mutex> lg(mut);
+	//	auto& ret = rows.emplace_back(0, (rows.size() + 1) * T::row_height, _data);
+	//	ret.handler = rowHandler;
+	//	ret.inner = _inner;
+	//	scroll_v.top++;
+	//}
+	void clear() {
 		std::lock_guard<std::mutex> lg(mut);
-		auto& ret = rows.emplace_back(0, (rows.size() + 1) * T::row_height, _data);
-		ret.handler = rowHandler;
-		ret.inner = _inner;
-		scroll_v.top++;
+		rows.clear();
 	}
 	void Render(olc::PixelGameEngine* pge) override {
 		std::lock_guard<std::mutex> lg(mut);
@@ -550,11 +521,11 @@ struct table : public scrollable_vh
 #pragma endregion
 
 
-class Sniffer : public olc::PixelGameEngine
+class HttpClient : public olc::PixelGameEngine
 {
 public:
-	Sniffer() {
-		sAppName = "Sniffer";
+	HttpClient() {
+		sAppName = "HTTP Client";
 	}
 
 
@@ -569,8 +540,7 @@ protected:
 	std::vector<std::shared_ptr<label>> labels;											// labels on current screen
 	std::vector<std::shared_ptr<button>> buttons;										// buttons on current screen
 	std::vector<std::shared_ptr<input>> inputs;											// inputs on current screen
-	std::vector<std::shared_ptr<table<row_ip>>> ip_tables;								// tables with row_ip rows on current screen
-	std::vector<std::shared_ptr<table<row_in>>> in_tables;								// tables with row_in rows on current screen
+	std::vector<std::shared_ptr<ui_element>> tmp_uis;									// uis must deleted
 
 	// data
 	SOCKET sniffer = SOCKET_ERROR;
@@ -579,38 +549,33 @@ protected:
 	SOCKADDR_IN dest;
 	IN_ADDR addr;
 	int in;
+	std::string server_url, path_url;
 
 
 public:
 	bool OnUserCreate() override {
 		screens = {
-			{ "start",	(Screen)& Sniffer::StartScreen	},
-			{ "main",	(Screen)& Sniffer::MainScreen	},
-			{ "error",	(Screen)& Sniffer::ErrorScreen	},
+			{ "start",	(Screen)&HttpClient::StartScreen	},
+			{ "main",	(Screen)&HttpClient::MainScreen		},
+			{ "error",	(Screen)&HttpClient::ErrorScreen	},
 		};
 
-		auto in_list = std::make_shared<table<row_in>>(100, 20, ScreenWidth() - 200, row_in::row_height * 14 + 10);
-		auto inp = std::make_shared<input>(100, ScreenHeight() - 80, ScreenWidth() - 200, 20);
-		auto list_btn = std::make_shared<button>((ScreenWidth() - 100) / 2 - 60, ScreenHeight() - 40, 100, 20, "In list", (BtnHandler)&Sniffer::InterfaceListHandler);
-		auto start_btn = std::make_shared<button>((ScreenWidth() - 100) / 2 + 60, ScreenHeight() - 40, 100, 20, "Start", (BtnHandler)&Sniffer::StartHandler);
-		uis["start"].push_back(in_list);
-		uis["start"].push_back(inp);
-		uis["start"].push_back(list_btn);
-		uis["start"].push_back(start_btn);
+		auto inputAddr = std::make_shared<input>(100, ScreenHeight() - 80, ScreenWidth() - 200, 20);
+		auto btnSubmit = std::make_shared<button>((ScreenWidth() - 100) / 2 + 60, ScreenHeight() - 40, 100, 20, "Submit", (BtnHandler)&HttpClient::SubmitHandler);
+		auto btnFtp = std::make_shared<button>((ScreenWidth() - 100) / 2 - 60, ScreenHeight() - 40, 100, 20, "Ftp", (BtnHandler)&HttpClient::FtpHandler);
+		uis["start"].push_back(inputAddr);
+		uis["start"].push_back(btnSubmit);
+		uis["start"].push_back(btnFtp);
 
-		auto t1 = std::make_shared<table<row_ip>>(0, 0, ScreenWidth(), row_ip::row_height * 10 + 10 + row_ip::row_height / 2);
-		t1->rowHandler = (BtnHandler)&Sniffer::RowIPClickedHandler;
-		auto info_id = std::make_shared<label>(0, t1->h, ScreenWidth(), 8, "");
-		auto info = std::make_shared<label>(0, t1->h + 8, ScreenWidth(), ScreenHeight() - t1->h, "");
-		uis["main"].push_back(t1);
-		uis["main"].push_back(info_id);
-		uis["main"].push_back(info);
+		auto lblMain = std::make_shared<label>(0, 0, ScreenWidth(), ScreenHeight() - 60);
+		auto btnBack = std::make_shared<button>((ScreenWidth() - 100) / 2, ScreenHeight() - 40, 100, 20, "Back", (BtnHandler)&HttpClient::BackHandler);
+		uis["main"].push_back(lblMain);
+		uis["main"].push_back(btnBack);
 
-		auto back = std::make_shared<button>((ScreenWidth() / 2) - 50, ScreenHeight() - 40, 100, 20, "To start", (BtnHandler)&Sniffer::BackToStartHandler);
-		uis["error"].push_back(back);
+		auto btnToStart = std::make_shared<button>((ScreenWidth() - 100) / 2, ScreenHeight() - 40, 100, 20, "Back", (BtnHandler)&HttpClient::BackHandler);
+		uis["error"].push_back(btnToStart);
 
 		ChangeScreen("start");
-		InterfaceListHandler(nullptr);
 
 		return true;
 	}
@@ -626,15 +591,22 @@ public:
 			for (auto& ui : current_uis)
 				if (ui->MouseCollide(this))
 					ui->OnClick(this);
+			for (auto& ui : tmp_uis)
+				if (ui->MouseCollide(this))
+					ui->OnClick(this);
 			for (auto& in : inputs)
 				in->bSelected = in->MouseCollide(this);
 		}
-		if (GetMouseWheel() != 0)
+		if (GetMouseWheel() != 0) {
 			for (auto& ui : current_uis)
 				if (ui->MouseCollide(this))
 					ui->OnMouseWheel(this);
+			for (auto& ui : tmp_uis)
+				if (ui->MouseCollide(this))
+					ui->OnMouseWheel(this);
+		}
 		bool bShiftPressed = GetKey(olc::Key::SHIFT).bHeld;
-		for (int i = 0; i <= olc::Key::DOT; i++) {
+		for (int i = 0; i <= olc::Key::SLASH; i++) {
 			olc::Key key = olc::Key(i);
 			if (GetKey(key).bPressed)
 				for (auto& in : inputs)
@@ -648,12 +620,13 @@ public:
 		// Draw
 		for (auto& ui : current_uis)
 			ui->Render(this);
+		for (auto& ui : tmp_uis)
+			ui->Render(this);
 
 		return true;
 	}
 
-
-private:
+protected:
 	template<typename T>
 	void Extract(std::vector<std::shared_ptr<T>>& v, std::vector<std::shared_ptr<ui_element>>& uis) {
 		v.clear();
@@ -672,13 +645,11 @@ private:
 			errorMessage = "No such screen";
 			current_screen = screens[screenName];
 		}
-		// Ќе круто, что происходит полное копирование
 		current_uis = uis[screenName];
 		Extract(labels, current_uis);
 		Extract(buttons, current_uis);
 		Extract(inputs, current_uis);
-		Extract(ip_tables, current_uis);
-		Extract(in_tables, current_uis);
+		tmp_uis.clear();
 	}
 
 	bool StartScreen(float fElapsedTime) {
@@ -694,163 +665,205 @@ private:
 		return true;
 	}
 
-private:
-	void InterfaceListHandler(std::any a) {
-		char hostname[100];
 
+	void ExitHandler(std::any a) {
 
-		if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
-			errorMessage = "WSAStartup() failed. : " + std::to_string(WSAGetLastError());
-			ChangeScreen("error");
-			return;
-		}
+	}
 
-		if (gethostname(hostname, sizeof(hostname) - 1) == SOCKET_ERROR) {
-			errorMessage = "Error: " + std::to_string(WSAGetLastError());
-			WSACleanup();
-			ChangeScreen("error");
-			return;
-		}
-		std::cout << "Hostname: " << hostname << std::endl;
+	void FtpHandler(std::any a) {
+		server_url = inputs[0]->strInput;
+		auto ftp_table = std::make_shared<table<row_ftp>>(0, 0, ScreenWidth(), row_ftp::row_height * 11);
+		ftp_table->rowHandler = (BtnHandler)&HttpClient::RowFtpHandler;
 
-		ADDRINFO hints = { 0 };
-		ADDRINFO* ptr = NULL;
-		hints.ai_family = AF_UNSPEC;
-		auto ret = getaddrinfo(hostname, "0", &hints, &addrinfo);
-		if (ret != 0) {
-			errorMessage = "getaddrinfo() failed. : " + std::to_string(WSAGetLastError()) + " : " + gai_strerrorA(ret);
-			WSACleanup();
-			ChangeScreen("error");
-			return;
-		}
-		ptr = addrinfo;
+		ChangeScreen("main");
 
-		in_tables[0]->rows.clear();
-		for (int i = 0; ptr != NULL; ptr = ptr->ai_next, i++) {
-			row_in::data d = { i };
-			auto ret = InetNtopA(AF_INET, ptr->ai_addr, d.addr, 16);
-			std::cout << i << ": " << ptr->ai_family << " - " << d.addr << std::endl;
-			if (ret == nullptr) {
-				errorMessage = "Can't get one of interfaces";
-				WSACleanup();
+		std::thread([&](std::shared_ptr<table<row_ftp>> ftp_table) {
+			HINTERNET internet = InternetOpenA(NULL, INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
+			HINTERNET ftp_session = InternetConnectA(internet, server_url.c_str(), INTERNET_DEFAULT_FTP_PORT, NULL, NULL, INTERNET_SERVICE_FTP, 0, 0);
+
+			if (ftp_session == NULL) {
+				errorMessage = "ftp error: " + std::to_string(GetLastError());
+				InternetCloseHandle(internet);
+				ftp_table.reset();
 				ChangeScreen("error");
 				return;
 			}
-			in_tables[0]->push_back(d);
-		}
+
+			WIN32_FIND_DATAA winFindData;
+			HINTERNET ftp_next = FtpFindFirstFileA(ftp_session, NULL, &winFindData, NULL, NULL);
+			row_ftp::data d = {
+				winFindData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY ?
+				row_ftp::obj_type::dir :
+				row_ftp::obj_type::file
+			};
+			std::memcpy(d.name, winFindData.cFileName, 63);
+			winFindData = { 0 };
+			ftp_table->push_back(d);
+			while (InternetFindNextFileA(ftp_next, &winFindData)) {
+				row_ftp::data d = {
+					winFindData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY ?
+					row_ftp::obj_type::dir :
+					row_ftp::obj_type::file
+				};
+				std::memcpy(d.name, winFindData.cFileName, 63);
+				winFindData = { 0 };
+				ftp_table->push_back(d);
+			}
+			if (GetLastError() != ERROR_NO_MORE_FILES) {
+				std::cout << "jopa: " << GetLastError() << std::endl;
+			}
+
+			InternetCloseHandle(ftp_session);
+			InternetCloseHandle(internet);
+		}, ftp_table).detach();
+
+		tmp_uis.push_back(ftp_table);
 	}
 
-	void StartHandler(std::any a) {
-		// looks like impossible
-		if (addrinfo == nullptr) {
-			errorMessage = "Interface list is not initialized";
+	void SubmitHandler(std::any a) {
+		std::string url = inputs[0]->strInput;
+
+		WSADATA wsaData;
+		SOCKET sock;
+		SOCKADDR_IN sockAddr;
+		int lineCount = 0;
+		int rowCount = 0;
+		hostent* host;
+		std::string httpGet;
+		char buffer[10000];
+
+
+		httpGet =
+			"GET / HTTP/1.1\r\n"
+			"Host: " + url + "\r\n"
+			"Connection: close\r\n\r\n";
+
+		if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
+			errorMessage = "WSAStartup failed.";
+			ChangeScreen("error");
+			return;
+		}
+
+		sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+		host = gethostbyname(url.c_str());
+
+		if (host == nullptr) {
+			errorMessage = "No such host";
 			WSACleanup();
 			ChangeScreen("error");
 			return;
 		}
 
-		int if_num = atoi(inputs[0]->strInput.c_str());
+		sockAddr.sin_port = htons(80);
+		sockAddr.sin_family = AF_INET;
+		sockAddr.sin_addr.s_addr = *((unsigned long*)host->h_addr);
 
-		ADDRINFO* ptr = addrinfo;
+		if (connect(sock, (SOCKADDR*)(&sockAddr), sizeof(sockAddr)) != 0) {
+			errorMessage = "Could not connect.";
+			WSACleanup();
+			ChangeScreen("error");
+			return;
+		}
+		send(sock, httpGet.c_str(), httpGet.size(), 0);
 
-		for (int i = 0; ptr != NULL; ptr = ptr->ai_next, i++) {
-			if (i == if_num) {
-				dest = { 0 };
-				memcpy(&dest, ptr->ai_addr, sizeof(dest));
-				dest.sin_family = AF_INET;
-				dest.sin_port = 0;
-				break;
+		int nDataLength;
+		std::string html;
+		while ((nDataLength = recv(sock, buffer, 10000, 0)) > 0) {
+			int i = 0;
+			while (buffer[i] >= 32 || buffer[i] == '\n' || buffer[i] == '\r') {
+				i++;
+				if (buffer[i] == '\r') continue;
+				html += buffer[i];
 			}
 		}
 
-		if (ptr == NULL) {
-			errorMessage = "No such interface";
-			WSACleanup();
-			ChangeScreen("error");
-			return;
-		}
-
-		sniffer = socket(AF_INET, SOCK_RAW, IPPROTO_IP);
-		if (sniffer == SOCKET_ERROR) {
-			errorMessage = "socket() failed : " + std::to_string(WSAGetLastError());
-			WSACleanup();
-			ChangeScreen("error");
-			return;
-		}
-
-		auto ret = bind(sniffer, (sockaddr*)&dest, sizeof(dest));
-		if (ret == SOCKET_ERROR) {
-			errorMessage = "bind() failed. : " + std::to_string(WSAGetLastError());
-			WSACleanup();
-			ChangeScreen("error");
-			return;
-		}
-
-		int j = 1;
-		if (WSAIoctl(sniffer, SIO_RCVALL, &j, sizeof(j), 0, 0, (LPDWORD)&in, 0, 0) == SOCKET_ERROR)
-		{
-			errorMessage = "WSAIoctl() failed.";
-			WSACleanup();
-			ChangeScreen("error");
-			return;
-		}
-
-		std::thread([&]() {
-			std::cout << "Thread started" << std::endl;
-
-			auto proc_packet = [&](char* buffer, int size) {
-				row_ip::data* ip_header = (row_ip::data*)buffer;
-				row_ip::inner_data inner_data;
-				int data_size = size - sizeof(row_ip::data);
-				char* data = new char[data_size];
-				memcpy(data, buffer + sizeof(row_ip::data), data_size);
-				inner_data.data = data;
-				if (!ip_tables.empty())
-					ip_tables[0]->push_back(*ip_header, inner_data);
-			};
-
-			int iRecv = 0;
-			do {
-				const int buf_size = 65535;
-				char buffer[buf_size] = { 0 };
-				iRecv = recvfrom(sniffer, buffer, buf_size - 1, 0, 0, 0);
-				if (iRecv > 0)
-					proc_packet(buffer, iRecv);
-				else
-					std::cout << "recvfrom() failed. : " << WSAGetLastError() << std::endl;
-			} while (iRecv > 0);
-		}).detach();
+		closesocket(sock);
+		WSACleanup();
 
 		ChangeScreen("main");
+
+		auto lblHtml = std::make_shared<label>(0, 0, ScreenWidth(), ScreenHeight() - 60, html);
+		tmp_uis.push_back(lblHtml);
 	}
 
-	void RowIPClickedHandler(std::any a) {
-		row_ip r = std::any_cast<row_ip>(a);
-		std::string newText = std::to_string(r.header.id);
-		labels[0]->text = newText;
-		if (r.header.tlen > sizeof(row_ip::data)) {
-			int data_size = r.header.tlen - sizeof(row_ip::data);
-			std::string t;
-			t.resize(data_size);
-			for (int i = 0; i < data_size; i++)
-				if (r.inner.data[i] < ' ' || r.inner.data[i] > '~')
-					t[i] = '.';
-				else
-					t[i] = r.inner.data[i];
-			labels[1]->text = t;
-		}
-	}
-
-	void BackToStartHandler(std::any a) {
+	void BackHandler(std::any a) {
 		ChangeScreen("start");
-		InterfaceListHandler(a);
+	}
+
+	void RowFtpHandler(std::any a) {
+		// enter dir or download file
+		row_ftp r = std::any_cast<row_ftp>(a);
+		table<row_ftp>* ftp_table = static_cast<table<row_ftp>*>(tmp_uis[0].get());
+
+		std::thread([&](row_ftp r, table<row_ftp>* ftp_table) {
+			HINTERNET internet = InternetOpenA(NULL, INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
+			HINTERNET ftp_session = InternetConnectA(internet, server_url.c_str(), INTERNET_DEFAULT_FTP_PORT, NULL, NULL, INTERNET_SERVICE_FTP, 0, 0);
+
+			if (ftp_session == NULL) {
+				errorMessage = "ftp error: " + std::to_string(GetLastError());
+				InternetCloseHandle(internet);
+				ChangeScreen("error");
+				return;
+			}
+
+			// set current dir
+			// if dir clicked - update ftp_table
+			// if file clicked - download
+
+			WIN32_FIND_DATAA winFindData;
+			row_ftp::data d;
+			HINTERNET ftp_next;
+
+			switch (r.info.type)
+			{
+			case row_ftp::obj_type::dir:
+				path_url += r.info.name;
+				path_url += "/";
+				FtpSetCurrentDirectoryA(ftp_session, path_url.c_str());
+				ftp_table->clear();
+				ftp_next = FtpFindFirstFileA(ftp_session, NULL, &winFindData, NULL, NULL);
+				d = {
+					winFindData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY ?
+					row_ftp::obj_type::dir :
+					row_ftp::obj_type::file
+				};
+				std::memcpy(d.name, winFindData.cFileName, 63);
+				winFindData = { 0 };
+				ftp_table->push_back(d);
+				while (InternetFindNextFileA(ftp_next, &winFindData)) {
+					d = {
+						winFindData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY ?
+						row_ftp::obj_type::dir :
+						row_ftp::obj_type::file
+					};
+					std::memcpy(d.name, winFindData.cFileName, 63);
+					winFindData = { 0 };
+					ftp_table->push_back(d);
+				}
+				if (GetLastError() != ERROR_NO_MORE_FILES) {
+					std::cout << "jopa: " << GetLastError() << std::endl;
+				}
+				break;
+
+			case row_ftp::obj_type::file:
+				FtpSetCurrentDirectoryA(ftp_session, path_url.c_str());
+				FtpGetFileA(ftp_session, r.info.name, r.info.name, false, NULL, FTP_TRANSFER_TYPE_BINARY, NULL);
+				break;
+
+			default:
+				break;
+			}
+
+			InternetCloseHandle(ftp_session);
+			InternetCloseHandle(internet);
+		}, r, ftp_table).detach();
 	}
 };
 
 
 int main(int argc, char* argv[]) {
-	Sniffer client;
-	if (client.Construct(698, 300, 2, 2))
-		client.Start();
+	HttpClient httpClient;
+	if (httpClient.Construct(700, 300, 2, 2))
+		httpClient.Start();
 	return 0;
 }
